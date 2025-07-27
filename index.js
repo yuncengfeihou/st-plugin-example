@@ -6,7 +6,7 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 //  1. 定义所有工具函数和常量
 // ==========================================================
 
-const extensionName = 'my-update-checker'; // 插件文件夹名，API 需要这个
+const extensionName = 'st-plugin-example'; // 插件文件夹名，API 需要这个
 
 // --- 配置区 ---
 const LOCAL_VERSION = '1.0.3'; // 你的本地版本
