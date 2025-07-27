@@ -1,7 +1,9 @@
 // SillyTavern 模块导入
-// 根据你的 ST 版本，路径可能需要微调
 import { eventSource, event_types, getRequestHeaders } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
+// 新增导入：我们需要 extension_types 来获取插件信息
+import { extension_types } from '../../../extensions.js';
+
 
 // 插件的唯一名称，必须与文件夹名一致
 const extensionName = 'my-update-checker';
@@ -20,13 +22,11 @@ let isUpdateAvailable = false;
 
 /**
  * 比较两个语义化版本号 (e.g., "1.2.3")
- * @param {string} versionA
- * @param {string} versionB
- * @returns {number} 1 if versionA > versionB, -1 if versionA < versionB, 0 if equal
+ * (此函数保持不变)
  */
 function compareVersions(versionA, versionB) {
     const cleanA = versionA.split('-')[0].split('+')[0];
-    const cleanB = versionB.split('-')[0].split('+')[0];
+    const cleanB = versionB.split('.').map(Number);
     const partsA = cleanA.split('.').map(Number);
     const partsB = cleanB.split('.').map(Number);
 
@@ -42,15 +42,14 @@ function compareVersions(versionA, versionB) {
 
 /**
  * 从 GitHub API 获取远程 manifest.json 的内容
- * @returns {Promise<string>} 文件内容的字符串
+ * (此函数保持不变)
  */
 async function getRemoteManifestContent() {
-    // 使用 jsDelivr 作为 CDN，它比直接访问 GitHub API 更快且无速率限制
     const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/${REMOTE_MANIFEST_PATH}`;
     console.log(`[${extensionName}] Fetching remote manifest from: ${url}`);
     
     try {
-        const response = await fetch(url, { cache: 'no-store' }); // "no-store" 确保获取最新版本
+        const response = await fetch(url, { cache: 'no-store' });
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -63,8 +62,7 @@ async function getRemoteManifestContent() {
 
 /**
  * 解析 manifest 内容以获取版本号
- * @param {string} content manifest.json 的文件内容
- * @returns {string} 版本号字符串
+ * (此函数保持不变)
  */
 function parseVersionFromManifest(content) {
     try {
@@ -81,8 +79,10 @@ function parseVersionFromManifest(content) {
 
 /**
  * 更新插件的 UI 状态
+ * (此函数保持不变)
  */
 function updateUI() {
+    // ... (函数内容不变) ...
     const statusEl = $('#my_update_checker_status');
     const updateInfoEl = $('#my_update_checker_update_info');
     const updateButtonEl = $('#my_update_checker_update_button');
@@ -100,8 +100,10 @@ function updateUI() {
 
 /**
  * 模拟 SillyTavern 的更新流程
+ * (此函数保持不变)
  */
 async function performUpdate() {
+    // ... (函数内容不变) ...
     try {
         await callGenericPopup(
             `正在模拟更新到版本 ${remoteVersion}...`,
@@ -109,15 +111,7 @@ async function performUpdate() {
             null,
             { okButton: '我知道了' }
         );
-        // 实际场景中，这里会调用 ST 的后端 API，如：
-        // const response = await fetch("/api/extensions/update", {
-        //     method: "POST",
-        //     headers: getRequestHeaders(),
-        //     body: JSON.stringify({ extensionName: extensionName, ... })
-        // });
-        // ... 然后处理 response 并提示用户刷新页面 ...
         
-        // 为了演示，我们只在前端修改版本号并刷新UI
         localVersion = remoteVersion;
         isUpdateAvailable = false;
         updateUI();
@@ -128,28 +122,36 @@ async function performUpdate() {
     }
 }
 
+// ==========================================================
+//  修改从这里开始
+// ==========================================================
 /**
- * 检查更新的主函数
+ * 检查更新的主函数 (修改版)
  */
 async function check_for_updates() {
     console.log(`[${extensionName}] Checking for updates...`);
     $('#my_update_checker_status').text('正在检查更新...');
 
     try {
-        // 1. 获取本地版本 (从 manifest.json)
-        // SillyTavern 加载插件时会自动读取 manifest，但我们为了演示再次读取
-        const localManifestResponse = await fetch(`/scripts/extensions/third-party/${extensionName}/manifest.json`, { cache: 'no-store' });
-        localVersion = parseVersionFromManifest(await localManifestResponse.text());
+        // 1. 获取本地版本 (从 SillyTavern 的插件对象中读取)
+        // 这是更可靠的方法，不再使用 fetch
+        const pluginKey = Object.keys(extension_types).find(key => key.endsWith(extensionName));
+        if (!pluginKey || !extension_types[pluginKey].version) {
+            throw new Error('无法在 SillyTavern 的 extension_types 中找到插件信息。');
+        }
+        localVersion = extension_types[pluginKey].version;
+        console.log(`[${extensionName}] Local version found: ${localVersion}`);
 
         // 2. 获取远程版本
         const remoteContent = await getRemoteManifestContent();
         remoteVersion = parseVersionFromManifest(remoteContent);
+        console.log(`[${extensionName}] Remote version found: ${remoteVersion}`);
         
         // 3. 比较版本
         isUpdateAvailable = compareVersions(remoteVersion, localVersion) > 0;
         
         if(isUpdateAvailable) {
-            console.log(`[${extensionName}] New version available! Local: ${localVersion}, Remote: ${remoteVersion}`);
+            console.log(`[${extensionName}] New version available!`);
         } else {
             console.log(`[${extensionName}] You are on the latest version.`);
         }
@@ -163,8 +165,12 @@ async function check_for_updates() {
     // 4. 更新 UI
     updateUI();
 }
+// ==========================================================
+//  修改到这里结束
+// ==========================================================
 
 // 使用 jQuery(async () => { ... }) 确保在 DOM 加载完成后执行
+// (此部分保持不变)
 jQuery(async () => {
     // 定义插件设置界面的 HTML
     const settingsHtml = `
