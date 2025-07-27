@@ -20,12 +20,10 @@ let isUpdateAvailable = false;
 
 /**
  * 比较两个语义化版本号
- * (此函数保持不变)
- */
-function compareVersions(versionA, versionB) {
-    // ... (函数内容不变) ...
+ function compareVersions(versionA, versionB) {
     const cleanA = versionA.split('-')[0].split('+')[0];
-    const cleanB = versionB.split('.').map(Number);
+    // 修正这里：对 versionB 执行和 versionA 一样的清理操作
+    const cleanB = versionB.split('-')[0].split('+')[0]; 
     const partsA = cleanA.split('.').map(Number);
     const partsB = cleanB.split('.').map(Number);
 
@@ -41,10 +39,9 @@ function compareVersions(versionA, versionB) {
 
 /**
  * 从 GitHub API 获取远程 manifest.json 的内容
- * (此函数保持不变)
+
  */
 async function getRemoteManifestContent() {
-    // ... (函数内容不变) ...
     const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/${REMOTE_MANIFEST_PATH}`;
     console.log(`[${extensionName}] Fetching remote manifest from: ${url}`);
     
