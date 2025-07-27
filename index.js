@@ -1,16 +1,17 @@
 // SillyTavern 模块导入
-// 我们不再需要 extension_settings 了
 import { getRequestHeaders } from '../../../../script.js';
 import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
+
+// ==========================================================
+//  1. 定义所有工具函数和常量
+// ==========================================================
 
 // 插件的唯一名称，用于日志和UI元素ID
 const extensionName = 'my-update-checker';
 
 // --- 配置区 ---
-// 1. 在这里直接定义你的本地版本号！
-const LOCAL_VERSION = '1.0.2'; 
-// 2. 你的 GitHub 仓库信息
-const GITHUB_REPO = 'yuncengfeihou/st-plugin-example';
+const LOCAL_VERSION = '1.0.2'; // 你的本地版本
+const GITHUB_REPO = 'yuncengfeihou/st-plugin-example'; // 你的仓库
 const REMOTE_MANIFEST_PATH = 'manifest.json';
 // ----------------
 
@@ -20,10 +21,10 @@ let isUpdateAvailable = false;
 
 /**
  * 比较两个语义化版本号
- function compareVersions(versionA, versionB) {
+ */
+function compareVersions(versionA, versionB) {
     const cleanA = versionA.split('-')[0].split('+')[0];
-    // 修正这里：对 versionB 执行和 versionA 一样的清理操作
-    const cleanB = versionB.split('-')[0].split('+')[0]; 
+    const cleanB = versionB.split('-')[0].split('+')[0];
     const partsA = cleanA.split('.').map(Number);
     const partsB = cleanB.split('.').map(Number);
 
@@ -39,7 +40,6 @@ let isUpdateAvailable = false;
 
 /**
  * 从 GitHub API 获取远程 manifest.json 的内容
-
  */
 async function getRemoteManifestContent() {
     const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/${REMOTE_MANIFEST_PATH}`;
@@ -59,10 +59,8 @@ async function getRemoteManifestContent() {
 
 /**
  * 解析 manifest 内容以获取版本号
- * (此函数保持不变)
  */
 function parseVersionFromManifest(content) {
-    // ... (函数内容不变) ...
     try {
         const manifest = JSON.parse(content);
         if (manifest && typeof manifest.version === 'string') {
@@ -83,7 +81,6 @@ function updateUI() {
     const updateInfoEl = $('#my_update_checker_update_info');
     const updateButtonEl = $('#my_update_checker_update_button');
 
-    // 直接使用我们定义的常量
     statusEl.text(`当前版本: ${LOCAL_VERSION}`);
 
     if (isUpdateAvailable) {
@@ -107,12 +104,13 @@ async function performUpdate() {
             { okButton: '我知道了' }
         );
         
-        // 在真实场景中，更新后用户需要手动修改 JS 文件中的 LOCAL_VERSION
-        // 或者通过构建工具自动更新。这里我们只模拟UI变化。
         $('#my_update_checker_status').text(`已“更新”到 ${remoteVersion}`);
         isUpdateAvailable = false;
-        updateUI(); // 刷新UI以隐藏按钮和提示
-        toastr.success(`插件已“更新”到 ${remoteVersion}！请手动更新代码中的版本号。`);
+        // 注意：这里为了演示，只在UI上模拟了更新，但 LOCAL_VERSION 常量无法在运行时改变
+        // 真实场景下，用户需要手动更新文件并重启
+        updateButtonEl.hide();
+        updateInfoEl.hide();
+        toastr.success(`插件已“更新”到 ${remoteVersion}！请手动更新代码中的版本号并重启。`);
 
     } catch (error) {
         // 用户关闭了弹窗
@@ -127,15 +125,13 @@ async function check_for_updates() {
     $('#my_update_checker_status').text('正在检查更新...');
 
     try {
-        // 1. 获取本地版本 -- 现在直接从常量读取
         console.log(`[${extensionName}] Local version is defined as: ${LOCAL_VERSION}`);
 
-        // 2. 获取远程版本
         const remoteContent = await getRemoteManifestContent();
         remoteVersion = parseVersionFromManifest(remoteContent);
         console.log(`[${extensionName}] Remote version found: ${remoteVersion}`);
         
-        // 3. 比较版本
+        // 现在调用 compareVersions 时，它肯定已经被定义了
         isUpdateAvailable = compareVersions(remoteVersion, LOCAL_VERSION) > 0;
         
         if(isUpdateAvailable) {
@@ -150,13 +146,14 @@ async function check_for_updates() {
         return;
     }
     
-    // 4. 更新 UI
     updateUI();
 }
 
-// 使用 jQuery(async () => { ... }) 确保在 DOM 加载完成后执行
+// ==========================================================
+//  2. 插件入口 (DOM Ready)
+// ==========================================================
 jQuery(async () => {
-    // 定义插件设置界面的 HTML
+    // 定义UI
     const settingsHtml = `
     <div id="my_update_checker_container" class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
@@ -174,12 +171,12 @@ jQuery(async () => {
         </div>
     </div>`;
 
-    // 将 HTML 注入到 SillyTavern 的扩展设置区域
+    // 注入UI
     $('#extensions_settings').append(settingsHtml);
-
-    // 为更新按钮绑定点击事件
+    
+    // 绑定事件
     $('#my_update_checker_update_button').on('click', performUpdate);
     
-    // 首次加载时立即检查更新
+    // 执行检查
     await check_for_updates();
 });
