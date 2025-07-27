@@ -7,7 +7,7 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 // ==========================================================
 
 // 插件的唯一名称，用于日志和UI元素ID
-const extensionName = 'my-update-checker';
+const extensionName = 'st-plugin-example';
 const extensionPath = `third-party/${extensionName}`; // SillyTavern API 需要的路径
 
 // --- 配置区 ---
