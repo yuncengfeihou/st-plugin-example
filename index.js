@@ -6,31 +6,26 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 //  1. 定义所有工具函数和常量
 // ==========================================================
 
-// 插件的唯一名称，用于日志和UI元素ID
-const extensionName = 'st-plugin-example';
-const extensionPath = `third-party/${extensionName}`; // SillyTavern API 需要的路径
+const extensionName = 'my-update-checker'; // 插件文件夹名，API 需要这个
 
 // --- 配置区 ---
-const LOCAL_VERSION = '1.0.6'; // 你的本地版本
+const LOCAL_VERSION = '1.0.2'; // 你的本地版本
 const GITHUB_REPO = 'yuncengfeihou/st-plugin-example'; // 你的仓库
-const REMOTE_CHANGELOG_PATH = 'CHANGELOG.md'; // 日志文件名
+const REMOTE_CHANGELOG_PATH = 'CHANGELOG.md';
 const REMOTE_MANIFEST_PATH = 'manifest.json';
 // ----------------
 
-// 全局变量
 let remoteVersion = '0.0.0';
-let latestCommitHash = ''; // 用于存储最新的 commit hash 以绕过CDN缓存
+let latestCommitHash = '';
 let isUpdateAvailable = false;
 
-/**
- * 比较两个语义化版本号
- */
+// ... compareVersions, getLatestCommitHash, getRemoteFileContent, parseVersionFromManifest 函数都保持不变 ...
+
 function compareVersions(versionA, versionB) {
     const cleanA = versionA.split('-')[0].split('+')[0];
     const cleanB = versionB.split('-')[0].split('+')[0];
     const partsA = cleanA.split('.').map(Number);
     const partsB = cleanB.split('.').map(Number);
-
     for (let i = 0; i < 3; i++) {
         const numA = partsA[i] || 0;
         const numB = partsB[i] || 0;
@@ -41,18 +36,10 @@ function compareVersions(versionA, versionB) {
     return 0;
 }
 
-/**
- * 从 GitHub API 获取 main 分支最新的 commit hash
- */
 async function getLatestCommitHash() {
     const url = `https://api.github.com/repos/${GITHUB_REPO}/commits/main`;
-    console.log(`[${extensionName}] Fetching latest commit hash from: ${url}`);
-    
     try {
-        const response = await fetch(url, {
-            headers: { 'Accept': 'application/vnd.github.v3+json' },
-            cache: 'no-store'
-        });
+        const response = await fetch(url, { headers: { 'Accept': 'application/vnd.github.v3+json' }, cache: 'no-store' });
         if (!response.ok) throw new Error(`GitHub API error! status: ${response.status}`);
         const data = await response.json();
         if (!data.sha) throw new Error('Invalid response from GitHub API, "sha" not found.');
@@ -63,15 +50,8 @@ async function getLatestCommitHash() {
     }
 }
 
-/**
- * 从 jsDelivr 获取指定 commit 的远程文件内容
- * @param {string} filePath - 仓库中的文件路径
- * @param {string} commitHash - 要获取的 commit hash
- */
 async function getRemoteFileContent(filePath, commitHash) {
     const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${commitHash}/${filePath}`;
-    console.log(`[${extensionName}] Fetching remote file: ${url}`);
-    
     try {
         const response = await fetch(url, { cache: 'no-store' });
         if (!response.ok) throw new Error(`jsDelivr error! status: ${response.status}`);
@@ -82,38 +62,23 @@ async function getRemoteFileContent(filePath, commitHash) {
     }
 }
 
-/**
- * 解析 manifest 内容以获取版本号
- */
 function parseVersionFromManifest(content) {
     try {
         const manifest = JSON.parse(content);
         return manifest?.version || '0.0.0';
     } catch (error) {
-        console.error(`[${extensionName}] Failed to parse version from manifest:`, error);
         return '0.0.0';
     }
 }
 
-/**
- * 从完整的更新日志中，提取从当前版本到最新版本之间的内容
- */
 function extractRelevantChangelog(changelogContent, currentVersion, latestVersion) {
     try {
         const startMarker = `## [${latestVersion}]`;
         const startIndex = changelogContent.indexOf(startMarker);
-
-        if (startIndex === -1) {
-            return "无法找到最新版本的更新日志。";
-        }
-
+        if (startIndex === -1) return "无法找到最新版本的更新日志。";
         const endMarker = `## [${currentVersion}]`;
         let endIndex = changelogContent.indexOf(endMarker, startIndex);
-        
-        if (endIndex === -1) {
-            endIndex = changelogContent.length;
-        }
-
+        if (endIndex === -1) endIndex = changelogContent.length;
         return changelogContent.substring(startIndex, endIndex).trim();
     } catch (error) {
         console.error("Error extracting changelog:", error);
@@ -121,16 +86,11 @@ function extractRelevantChangelog(changelogContent, currentVersion, latestVersio
     }
 }
 
-/**
- * 更新插件的 UI 状态
- */
 function updateUI() {
     const statusEl = $('#my_update_checker_status');
     const updateInfoEl = $('#my_update_checker_update_info');
     const updateButtonEl = $('#my_update_checker_update_button');
-
     statusEl.text(`当前版本: ${LOCAL_VERSION}`);
-
     if (isUpdateAvailable) {
         updateInfoEl.text(`发现新版本: ${remoteVersion}`).show();
         updateButtonEl.show();
@@ -140,25 +100,37 @@ function updateUI() {
     }
 }
 
-/**
- * 处理更新流程，使用正确的 API 调用方式
- */
+
+// ==========================================================
+//  修改的核心部分：最终版的 handleUpdate 函数
+// ==========================================================
 async function handleUpdate() {
+    let updatingToast = null;
     try {
+        // 步骤 1: 获取并显示更新日志
+        const changelog = await getRemoteFileContent(REMOTE_CHANGELOG_PATH, latestCommitHash);
+        const relevantLog = extractRelevantChangelog(changelog, LOCAL_VERSION, remoteVersion);
+        const logHtml = relevantLog.replace(/### (.*)/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+
         await callGenericPopup(
-            `确定要更新 ${extensionName} 到 ${remoteVersion} 版本吗？`,
+            `<h3>发现新版本: ${remoteVersion}</h3><hr><div style="text-align:left; max-height: 300px; overflow-y: auto;">${logHtml}</div>`,
             POPUP_TYPE.CONFIRM,
-            { okButton: '确定', cancelButton: '取消' }
+            { okButton: '立即更新', cancelButton: '稍后' }
         );
 
-        toastr.info("正在请求后端更新插件，请稍候...");
+        // 步骤 2: 用户确认后，显示持久化的更新提示
+        updatingToast = toastr.info("正在请求后端更新插件，请不要关闭或刷新页面...", "正在更新", {
+            timeOut: 0, // timeOut: 0 使其不会自动消失
+            extendedTimeOut: 0,
+            tapToDismiss: false,
+        });
         
+        // 步骤 3: 调用后端 API 执行更新
         const response = await fetch("/api/extensions/update", {
             method: "POST",
             headers: getRequestHeaders(),
             body: JSON.stringify({
                 extensionName: extensionName,
-                // 【最终修正】对于 public/ 目录下的插件，必须使用 true
                 global: true, 
             })
         });
@@ -170,67 +142,51 @@ async function handleUpdate() {
         
         const result = await response.json();
         
+        // 步骤 4: 根据结果处理 UI
         if (result.isUpToDate) {
             toastr.warning("插件已经是最新版本。");
         } else {
-            toastr.success(`更新成功！请刷新页面以应用新版本。`, "更新完成", {timeOut: 5000});
+            // 成功后，显示成功消息，并准备自动刷新
+            toastr.success(`更新成功！3秒后将自动刷新页面...`, "更新完成", { timeOut: 3000 });
+            setTimeout(() => location.reload(), 3000);
         }
 
     } catch (error) {
+        // 捕获所有错误，包括用户点击“取消”
         if (error.message && error.message.includes("更新失败")) {
             toastr.error(error.message, '更新出错');
         } else {
             toastr.info("更新已取消。");
         }
+    } finally {
+        // 步骤 5: 无论成功或失败，都清除“正在更新”的持久化提示
+        if (updatingToast) {
+            toastr.clear(updatingToast);
+        }
     }
 }
-/**
- * 检查更新的主函数 (采用两步验证法)
- */
+
 async function check_for_updates() {
-    console.log(`[${extensionName}] Checking for updates...`);
     $('#my_update_checker_status').text('正在检查更新...');
-
     try {
-        console.log(`[${extensionName}] Local version is defined as: ${LOCAL_VERSION}`);
-        
-        // 步骤 1: 获取最新的 commit hash
         latestCommitHash = await getLatestCommitHash();
-        console.log(`[${extensionName}] Latest commit hash: ${latestCommitHash}`);
-
-        // 步骤 2: 使用 commit hash 获取 manifest
         const remoteManifest = await getRemoteFileContent(REMOTE_MANIFEST_PATH, latestCommitHash);
         remoteVersion = parseVersionFromManifest(remoteManifest);
-        console.log(`[${extensionName}] Remote version found: ${remoteVersion}`);
-        
         isUpdateAvailable = compareVersions(remoteVersion, LOCAL_VERSION) > 0;
-        
-        if(isUpdateAvailable) {
-            console.log(`[${extensionName}] New version available!`);
-        } else {
-            console.log(`[${extensionName}] You are on the latest version.`);
-        }
-
     } catch (error) {
-        // 静默失败，不打扰用户
         $('#my_update_checker_status').text(`当前版本: ${LOCAL_VERSION}`);
         return;
     }
-    
     updateUI();
 }
 
 // ==========================================================
-//  2. 插件入口 (DOM Ready)
+//  插件入口 (DOM Ready)
 // ==========================================================
 jQuery(async () => {
-    // 定义UI
     const settingsHtml = `
     <div id="my_update_checker_container" class="inline-drawer">
-        <div class="inline-drawer-toggle inline-drawer-header">
-            <b>${extensionName}</b>
-            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-        </div>
+        <div class="inline-drawer-toggle inline-drawer-header"><b>${extensionName}</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>
         <div class="inline-drawer-content" style="display:block; padding:10px;">
             <p>这是一个用于测试检查更新功能的示例插件。</p>
             <div>
@@ -241,13 +197,7 @@ jQuery(async () => {
             <hr class="sysHR">
         </div>
     </div>`;
-
-    // 注入UI
     $('#extensions_settings').append(settingsHtml);
-    
-    // 绑定事件
     $('#my_update_checker_update_button').on('click', handleUpdate);
-    
-    // 执行检查
     await check_for_updates();
 });
