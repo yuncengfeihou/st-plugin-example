@@ -10,7 +10,7 @@ const extensionName = 'my-update-checker';
 // 1. 在这里直接定义你的本地版本号！
 const LOCAL_VERSION = '1.0.2'; 
 // 2. 你的 GitHub 仓库信息
-const GITHUB_REPO = 'YourUsername/st-plugin-example';
+const GITHUB_REPO = 'yuncengfeihou/st-plugin-example';
 const REMOTE_MANIFEST_PATH = 'manifest.json';
 // ----------------
 
