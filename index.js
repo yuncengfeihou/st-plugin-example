@@ -11,7 +11,7 @@ const extensionName = 'my-update-checker';
 const extensionPath = `third-party/${extensionName}`; // SillyTavern API 需要的路径
 
 // --- 配置区 ---
-const LOCAL_VERSION = '1.0.4'; // 你的本地版本
+const LOCAL_VERSION = '1.0.5'; // 你的本地版本
 const GITHUB_REPO = 'yuncengfeihou/st-plugin-example'; // 你的仓库
 const REMOTE_CHANGELOG_PATH = 'CHANGELOG.md'; // 日志文件名
 const REMOTE_MANIFEST_PATH = 'manifest.json';
