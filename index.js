@@ -6,16 +6,16 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 //  1. 定义所有工具函数和常量
 // ==========================================================
 
-// 插件的唯一名称，用于日志和UI元素ID
 const extensionName = 'my-update-checker';
+const extensionPath = `third-party/${extensionName}`; // SillyTavern API 需要的路径
 
 // --- 配置区 ---
-const LOCAL_VERSION = '1.0.8'; // 你的本地版本
+const LOCAL_VERSION = '1.0.2'; // 你的本地版本
 const GITHUB_REPO = 'yuncengfeihou/st-plugin-example'; // 你的仓库
+const REMOTE_CHANGELOG_PATH = 'CHANGELOG.md'; // 日志文件名
 const REMOTE_MANIFEST_PATH = 'manifest.json';
 // ----------------
 
-// 全局变量
 let remoteVersion = '0.0.0';
 let isUpdateAvailable = false;
 
@@ -39,40 +39,71 @@ function compareVersions(versionA, versionB) {
 }
 
 /**
- * 从 GitHub API 获取远程 manifest.json 的内容
+ * 从 GitHub 获取远程文件内容 (通用函数)
+ * @param {string} filePath - 仓库中的文件路径
  */
-async function getRemoteManifestContent() {
-    // 直接使用 GitHub Raw Content URL，绕过所有 CDN
-    const url = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${REMOTE_MANIFEST_PATH}`;
-    console.log(`[${extensionName}] Fetching directly from GitHub Raw: ${url}`);
+async function getRemoteFileContent(filePath) {
+    const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/${filePath}`;
+    console.log(`[${extensionName}] Fetching remote file: ${url}`);
     
     try {
-        // 加上时间戳来确保绕过浏览器缓存
-        const response = await fetch(`${url}?t=${new Date().getTime()}`, { cache: 'no-cache' }); 
+        const response = await fetch(url, { cache: 'no-store' });
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         return await response.text();
     } catch (error) {
-        console.error(`[${extensionName}] Failed to fetch remote manifest:`, error);
+        console.error(`[${extensionName}] Failed to fetch remote file ${filePath}:`, error);
         throw error;
     }
 }
+
 /**
  * 解析 manifest 内容以获取版本号
  */
 function parseVersionFromManifest(content) {
     try {
         const manifest = JSON.parse(content);
-        if (manifest && typeof manifest.version === 'string') {
-            return manifest.version;
-        }
-        throw new Error("Invalid manifest format or 'version' field is missing.");
+        return manifest?.version || '0.0.0';
     } catch (error) {
         console.error(`[${extensionName}] Failed to parse version from manifest:`, error);
-        throw error;
+        return '0.0.0';
     }
 }
+
+/**
+ * 从完整的更新日志中，提取从当前版本到最新版本之间的内容
+ * @param {string} changelogContent - 完整的日志文本
+ * @param {string} currentVersion - 用户当前的本地版本
+ * @param {string} latestVersion - 远程的最新版本
+ */
+function extractRelevantChangelog(changelogContent, currentVersion, latestVersion) {
+    try {
+        // 找到最新版本的日志开头
+        const startMarker = `## [${latestVersion}]`;
+        const startIndex = changelogContent.indexOf(startMarker);
+
+        if (startIndex === -1) {
+            return "无法找到最新版本的更新日志。";
+        }
+
+        // 找到当前版本的日志开头，作为结束标志
+        const endMarker = `## [${currentVersion}]`;
+        let endIndex = changelogContent.indexOf(endMarker, startIndex);
+        
+        // 如果找不到当前版本的日志（可能是跳版本更新），就截取到文件末尾
+        if (endIndex === -1) {
+            endIndex = changelogContent.length;
+        }
+
+        // 截取并清理
+        return changelogContent.substring(startIndex, endIndex).trim();
+    } catch (error) {
+        console.error("Error extracting changelog:", error);
+        return "解析更新日志失败。";
+    }
+}
+
 
 /**
  * 更新插件的 UI 状态
@@ -94,29 +125,62 @@ function updateUI() {
 }
 
 /**
- * 模拟 SillyTavern 的更新流程
+ * 处理更新流程：获取日志 -> 弹窗确认 -> 调用API更新
  */
-async function performUpdate() {
+async function handleUpdate() {
+    toastr.info("正在获取更新日志...");
     try {
+        // 1. 获取远程更新日志
+        const changelog = await getRemoteFileContent(REMOTE_CHANGELOG_PATH);
+        const relevantLog = extractRelevantChangelog(changelog, LOCAL_VERSION, remoteVersion);
+
+        // 将 Markdown 转换为 HTML 以在弹窗中更好地显示
+        // 简单的替换，对于复杂的 markdown 需要引入库，但这里足够了
+        const logHtml = relevantLog
+            .replace(/### (.*)/g, '<strong>$1</strong>') // h3 -> strong
+            .replace(/\n/g, '<br>'); // newlines -> <br>
+
+        // 2. 弹窗确认
         await callGenericPopup(
-            `正在模拟更新到版本 ${remoteVersion}...`,
-            POPUP_TYPE.TEXT,
-            null,
-            { okButton: '我知道了' }
+            `<h3>发现新版本: ${remoteVersion}</h3><hr><div style="text-align:left; max-height: 300px; overflow-y: auto;">${logHtml}</div>`,
+            POPUP_TYPE.CONFIRM,
+            { okButton: '立即更新', cancelButton: '稍后' }
         );
+
+        // 3. 用户确认后，执行真正的更新
+        toastr.info("正在请求后端更新插件，请稍候...");
+        const response = await fetch("/api/extensions/update", {
+            method: "POST",
+            headers: getRequestHeaders(),
+            body: JSON.stringify({
+                extensionName: extensionPath, // 使用 "third-party/plugin-name" 格式
+                global: false, // 通常为 false
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`更新失败，服务器返回状态: ${response.status}`);
+        }
         
-        $('#my_update_checker_status').text(`已“更新”到 ${remoteVersion}`);
-        isUpdateAvailable = false;
-        // 注意：这里为了演示，只在UI上模拟了更新，但 LOCAL_VERSION 常量无法在运行时改变
-        // 真实场景下，用户需要手动更新文件并重启
-        updateButtonEl.hide();
-        updateInfoEl.hide();
-        toastr.success(`插件已“更新”到 ${remoteVersion}！请手动更新代码中的版本号并重启。`);
+        const result = await response.json();
+        
+        if (result.isUpToDate) {
+            toastr.warning("插件已经是最新版本。");
+        } else {
+            toastr.success(`更新成功！3秒后将自动刷新页面...`);
+            setTimeout(() => location.reload(), 3000);
+        }
 
     } catch (error) {
-        // 用户关闭了弹窗
+        // 如果用户点击“取消”或发生错误
+        if (error.message.includes("更新失败")) {
+            toastr.error(error.message);
+        } else {
+            toastr.info("更新已取消。");
+        }
     }
 }
+
 
 /**
  * 检查更新的主函数
@@ -127,12 +191,11 @@ async function check_for_updates() {
 
     try {
         console.log(`[${extensionName}] Local version is defined as: ${LOCAL_VERSION}`);
-
-        const remoteContent = await getRemoteManifestContent();
-        remoteVersion = parseVersionFromManifest(remoteContent);
+        
+        const remoteManifest = await getRemoteFileContent(REMOTE_MANIFEST_PATH);
+        remoteVersion = parseVersionFromManifest(remoteManifest);
         console.log(`[${extensionName}] Remote version found: ${remoteVersion}`);
         
-        // 现在调用 compareVersions 时，它肯定已经被定义了
         isUpdateAvailable = compareVersions(remoteVersion, LOCAL_VERSION) > 0;
         
         if(isUpdateAvailable) {
@@ -142,8 +205,8 @@ async function check_for_updates() {
         }
 
     } catch (error) {
-        console.error(`[${extensionName}] Update check failed.`, error);
-        $('#my_update_checker_status').text('更新检查失败!');
+        // 静默失败，不打扰用户
+        $('#my_update_checker_status').text(`当前版本: ${LOCAL_VERSION}`);
         return;
     }
     
@@ -176,7 +239,7 @@ jQuery(async () => {
     $('#extensions_settings').append(settingsHtml);
     
     // 绑定事件
-    $('#my_update_checker_update_button').on('click', performUpdate);
+    $('#my_update_checker_update_button').on('click', handleUpdate);
     
     // 执行检查
     await check_for_updates();
