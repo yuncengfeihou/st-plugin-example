@@ -6,17 +6,20 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 //  1. 定义所有工具函数和常量
 // ==========================================================
 
+// 插件的唯一名称，用于日志和UI元素ID
 const extensionName = 'my-update-checker';
 const extensionPath = `third-party/${extensionName}`; // SillyTavern API 需要的路径
 
 // --- 配置区 ---
-const LOCAL_VERSION = '1.0.3'; // 你的本地版本
+const LOCAL_VERSION = '1.0.2'; // 你的本地版本
 const GITHUB_REPO = 'yuncengfeihou/st-plugin-example'; // 你的仓库
 const REMOTE_CHANGELOG_PATH = 'CHANGELOG.md'; // 日志文件名
 const REMOTE_MANIFEST_PATH = 'manifest.json';
 // ----------------
 
+// 全局变量
 let remoteVersion = '0.0.0';
+let latestCommitHash = ''; // 用于存储最新的 commit hash 以绕过CDN缓存
 let isUpdateAvailable = false;
 
 /**
@@ -39,18 +42,39 @@ function compareVersions(versionA, versionB) {
 }
 
 /**
- * 从 GitHub 获取远程文件内容 (通用函数)
- * @param {string} filePath - 仓库中的文件路径
+ * 从 GitHub API 获取 main 分支最新的 commit hash
  */
-async function getRemoteFileContent(filePath) {
-    const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/${filePath}`;
+async function getLatestCommitHash() {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/commits/main`;
+    console.log(`[${extensionName}] Fetching latest commit hash from: ${url}`);
+    
+    try {
+        const response = await fetch(url, {
+            headers: { 'Accept': 'application/vnd.github.v3+json' },
+            cache: 'no-store'
+        });
+        if (!response.ok) throw new Error(`GitHub API error! status: ${response.status}`);
+        const data = await response.json();
+        if (!data.sha) throw new Error('Invalid response from GitHub API, "sha" not found.');
+        return data.sha;
+    } catch (error) {
+        console.error(`[${extensionName}] Failed to fetch latest commit hash:`, error);
+        throw error;
+    }
+}
+
+/**
+ * 从 jsDelivr 获取指定 commit 的远程文件内容
+ * @param {string} filePath - 仓库中的文件路径
+ * @param {string} commitHash - 要获取的 commit hash
+ */
+async function getRemoteFileContent(filePath, commitHash) {
+    const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@${commitHash}/${filePath}`;
     console.log(`[${extensionName}] Fetching remote file: ${url}`);
     
     try {
         const response = await fetch(url, { cache: 'no-store' });
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`jsDelivr error! status: ${response.status}`);
         return await response.text();
     } catch (error) {
         console.error(`[${extensionName}] Failed to fetch remote file ${filePath}:`, error);
@@ -73,13 +97,9 @@ function parseVersionFromManifest(content) {
 
 /**
  * 从完整的更新日志中，提取从当前版本到最新版本之间的内容
- * @param {string} changelogContent - 完整的日志文本
- * @param {string} currentVersion - 用户当前的本地版本
- * @param {string} latestVersion - 远程的最新版本
  */
 function extractRelevantChangelog(changelogContent, currentVersion, latestVersion) {
     try {
-        // 找到最新版本的日志开头
         const startMarker = `## [${latestVersion}]`;
         const startIndex = changelogContent.indexOf(startMarker);
 
@@ -87,23 +107,19 @@ function extractRelevantChangelog(changelogContent, currentVersion, latestVersio
             return "无法找到最新版本的更新日志。";
         }
 
-        // 找到当前版本的日志开头，作为结束标志
         const endMarker = `## [${currentVersion}]`;
         let endIndex = changelogContent.indexOf(endMarker, startIndex);
         
-        // 如果找不到当前版本的日志（可能是跳版本更新），就截取到文件末尾
         if (endIndex === -1) {
             endIndex = changelogContent.length;
         }
 
-        // 截取并清理
         return changelogContent.substring(startIndex, endIndex).trim();
     } catch (error) {
         console.error("Error extracting changelog:", error);
         return "解析更新日志失败。";
     }
 }
-
 
 /**
  * 更新插件的 UI 状态
@@ -130,31 +146,26 @@ function updateUI() {
 async function handleUpdate() {
     toastr.info("正在获取更新日志...");
     try {
-        // 1. 获取远程更新日志
-        const changelog = await getRemoteFileContent(REMOTE_CHANGELOG_PATH);
+        const changelog = await getRemoteFileContent(REMOTE_CHANGELOG_PATH, latestCommitHash);
         const relevantLog = extractRelevantChangelog(changelog, LOCAL_VERSION, remoteVersion);
 
-        // 将 Markdown 转换为 HTML 以在弹窗中更好地显示
-        // 简单的替换，对于复杂的 markdown 需要引入库，但这里足够了
         const logHtml = relevantLog
-            .replace(/### (.*)/g, '<strong>$1</strong>') // h3 -> strong
-            .replace(/\n/g, '<br>'); // newlines -> <br>
+            .replace(/### (.*)/g, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
 
-        // 2. 弹窗确认
         await callGenericPopup(
             `<h3>发现新版本: ${remoteVersion}</h3><hr><div style="text-align:left; max-height: 300px; overflow-y: auto;">${logHtml}</div>`,
             POPUP_TYPE.CONFIRM,
             { okButton: '立即更新', cancelButton: '稍后' }
         );
 
-        // 3. 用户确认后，执行真正的更新
         toastr.info("正在请求后端更新插件，请稍候...");
         const response = await fetch("/api/extensions/update", {
             method: "POST",
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                extensionName: extensionPath, // 使用 "third-party/plugin-name" 格式
-                global: false, // 通常为 false
+                extensionName: extensionPath,
+                global: false,
             })
         });
 
@@ -172,7 +183,6 @@ async function handleUpdate() {
         }
 
     } catch (error) {
-        // 如果用户点击“取消”或发生错误
         if (error.message.includes("更新失败")) {
             toastr.error(error.message);
         } else {
@@ -181,9 +191,8 @@ async function handleUpdate() {
     }
 }
 
-
 /**
- * 检查更新的主函数
+ * 检查更新的主函数 (采用两步验证法)
  */
 async function check_for_updates() {
     console.log(`[${extensionName}] Checking for updates...`);
@@ -192,7 +201,12 @@ async function check_for_updates() {
     try {
         console.log(`[${extensionName}] Local version is defined as: ${LOCAL_VERSION}`);
         
-        const remoteManifest = await getRemoteFileContent(REMOTE_MANIFEST_PATH);
+        // 步骤 1: 获取最新的 commit hash
+        latestCommitHash = await getLatestCommitHash();
+        console.log(`[${extensionName}] Latest commit hash: ${latestCommitHash}`);
+
+        // 步骤 2: 使用 commit hash 获取 manifest
+        const remoteManifest = await getRemoteFileContent(REMOTE_MANIFEST_PATH, latestCommitHash);
         remoteVersion = parseVersionFromManifest(remoteManifest);
         console.log(`[${extensionName}] Remote version found: ${remoteVersion}`);
         
