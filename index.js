@@ -1,9 +1,5 @@
-// SillyTavern 模块导入
-import { eventSource, event_types, getRequestHeaders } from '../../../../script.js';
-import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
-// 新增导入：我们需要 extension_types 来获取插件信息
-import { extension_types } from '../../../extensions.js';
-
+// 注意：这次我们不再使用顶层的 import 语句，
+// 而是等待 DOM 加载完毕后从全局对象获取所需函数和变量。
 
 // 插件的唯一名称，必须与文件夹名一致
 const extensionName = 'my-update-checker';
@@ -20,9 +16,15 @@ let localVersion = '0.0.0';
 let remoteVersion = '0.0.0';
 let isUpdateAvailable = false;
 
+// 全局变量，用于存储从 ST 获取的函数
+let callGenericPopup;
+let POPUP_TYPE;
+
 /**
  * 比较两个语义化版本号 (e.g., "1.2.3")
- * (此函数保持不变)
+ * @param {string} versionA
+ * @param {string} versionB
+ * @returns {number} 1 if versionA > versionB, -1 if versionA < versionB, 0 if equal
  */
 function compareVersions(versionA, versionB) {
     const cleanA = versionA.split('-')[0].split('+')[0];
@@ -42,14 +44,14 @@ function compareVersions(versionA, versionB) {
 
 /**
  * 从 GitHub API 获取远程 manifest.json 的内容
- * (此函数保持不变)
+ * @returns {Promise<string>} 文件内容的字符串
  */
 async function getRemoteManifestContent() {
     const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/${REMOTE_MANIFEST_PATH}`;
     console.log(`[${extensionName}] Fetching remote manifest from: ${url}`);
     
     try {
-        const response = await fetch(url, { cache: 'no-store' });
+        const response = await fetch(url, { cache: 'no-store' }); // "no-store" 确保获取最新版本
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -62,7 +64,8 @@ async function getRemoteManifestContent() {
 
 /**
  * 解析 manifest 内容以获取版本号
- * (此函数保持不变)
+ * @param {string} content manifest.json 的文件内容
+ * @returns {string} 版本号字符串
  */
 function parseVersionFromManifest(content) {
     try {
@@ -79,10 +82,8 @@ function parseVersionFromManifest(content) {
 
 /**
  * 更新插件的 UI 状态
- * (此函数保持不变)
  */
 function updateUI() {
-    // ... (函数内容不变) ...
     const statusEl = $('#my_update_checker_status');
     const updateInfoEl = $('#my_update_checker_update_info');
     const updateButtonEl = $('#my_update_checker_update_button');
@@ -100,11 +101,15 @@ function updateUI() {
 
 /**
  * 模拟 SillyTavern 的更新流程
- * (此函数保持不变)
  */
 async function performUpdate() {
-    // ... (函数内容不变) ...
     try {
+        // 确保 callGenericPopup 已经加载
+        if (typeof callGenericPopup !== 'function') {
+            toastr.error('弹窗功能未准备好！');
+            return;
+        }
+
         await callGenericPopup(
             `正在模拟更新到版本 ${remoteVersion}...`,
             POPUP_TYPE.TEXT,
@@ -112,6 +117,7 @@ async function performUpdate() {
             { okButton: '我知道了' }
         );
         
+        // 为了演示，我们只在前端修改版本号并刷新UI
         localVersion = remoteVersion;
         isUpdateAvailable = false;
         updateUI();
@@ -122,24 +128,33 @@ async function performUpdate() {
     }
 }
 
-// ==========================================================
-//  修改从这里开始
-// ==========================================================
 /**
- * 检查更新的主函数 (修改版)
+ * 检查更新的主函数 (修正版)
  */
 async function check_for_updates() {
     console.log(`[${extensionName}] Checking for updates...`);
     $('#my_update_checker_status').text('正在检查更新...');
 
     try {
-        // 1. 获取本地版本 (从 SillyTavern 的插件对象中读取)
-        // 这是更可靠的方法，不再使用 fetch
-        const pluginKey = Object.keys(extension_types).find(key => key.endsWith(extensionName));
-        if (!pluginKey || !extension_types[pluginKey].version) {
-            throw new Error('无法在 SillyTavern 的 extension_types 中找到插件信息。');
+        // 1. 获取本地版本 (从 SillyTavern 加载的插件信息中读取)
+        // 这种方式兼容性更强
+        if (typeof SillyTavern === 'undefined' || !SillyTavern.getContext) {
+            throw new Error('SillyTavern 全局对象或 getContext 方法未找到。');
         }
-        localVersion = extension_types[pluginKey].version;
+        const stContext = SillyTavern.getContext();
+        // 在新版 ST 中，插件信息在 stContext.extensions.extension_types
+        // 在一些旧版中，可能直接是 stContext.extension_types
+        const extensionTypes = stContext.extensions ? stContext.extensions.extension_types : stContext.extension_types;
+        
+        if (!extensionTypes) {
+            throw new Error('无法找到插件类型定义对象 (extension_types)。');
+        }
+
+        const pluginKey = Object.keys(extensionTypes).find(key => key.endsWith(extensionName));
+        if (!pluginKey || !extensionTypes[pluginKey].version) {
+            throw new Error(`无法在 ST 的插件列表中找到 "${extensionName}" 的信息。`);
+        }
+        localVersion = extensionTypes[pluginKey].version;
         console.log(`[${extensionName}] Local version found: ${localVersion}`);
 
         // 2. 获取远程版本
@@ -165,13 +180,18 @@ async function check_for_updates() {
     // 4. 更新 UI
     updateUI();
 }
-// ==========================================================
-//  修改到这里结束
-// ==========================================================
 
-// 使用 jQuery(async () => { ... }) 确保在 DOM 加载完成后执行
-// (此部分保持不变)
-jQuery(async () => {
+/**
+ * 插件初始化函数
+ */
+async function initialize() {
+    console.log(`[${extensionName}] Initializing...`);
+    
+    // 从 SillyTavern 全局上下文中获取需要的函数
+    const stContext = SillyTavern.getContext();
+    callGenericPopup = stContext.popup.callGenericPopup;
+    POPUP_TYPE = stContext.popup.POPUP_TYPE;
+
     // 定义插件设置界面的 HTML
     const settingsHtml = `
     <div id="my_update_checker_container" class="inline-drawer">
@@ -198,4 +218,18 @@ jQuery(async () => {
     
     // 首次加载时立即检查更新
     await check_for_updates();
+}
+
+
+// 使用 jQuery(async () => { ... }) 确保在 DOM 加载完成后执行
+jQuery(async () => {
+    // 借鉴 quest-system 脚本的稳健做法，等待核心 API 准备就绪
+    function runWhenReady() {
+        if (typeof jQuery !== 'undefined' && typeof SillyTavern !== 'undefined' && SillyTavern.getContext && SillyTavern.getContext().popup) {
+            initialize();
+        } else {
+            setTimeout(runWhenReady, 100);
+        }
+    }
+    runWhenReady();
 });
