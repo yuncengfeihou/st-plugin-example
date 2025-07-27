@@ -145,7 +145,6 @@ function updateUI() {
  */
 async function handleUpdate() {
     try {
-        // (可选) 增加一个确认弹窗
         await callGenericPopup(
             `确定要更新 ${extensionName} 到 ${remoteVersion} 版本吗？`,
             POPUP_TYPE.CONFIRM,
@@ -154,21 +153,18 @@ async function handleUpdate() {
 
         toastr.info("正在请求后端更新插件，请稍候...");
         
-        // 【关键修正】API 调用
         const response = await fetch("/api/extensions/update", {
             method: "POST",
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                // 使用正确的插件文件夹名，而不是完整路径
-                extensionName: extensionName, 
-                // 对于 third-party 插件, global 通常是 false
-                global: false, 
+                extensionName: extensionName,
+                // 【最终修正】对于 public/ 目录下的插件，必须使用 true
+                global: true, 
             })
         });
 
         if (!response.ok) {
             const errorText = await response.text();
-            // 抛出更详细的错误，包括后端返回的信息
             throw new Error(`更新失败，服务器返回状态: ${response.status}. 详情: ${errorText}`);
         }
         
@@ -178,12 +174,9 @@ async function handleUpdate() {
             toastr.warning("插件已经是最新版本。");
         } else {
             toastr.success(`更新成功！请刷新页面以应用新版本。`, "更新完成", {timeOut: 5000});
-            // 也可以选择自动刷新
-            // setTimeout(() => location.reload(), 3000);
         }
 
     } catch (error) {
-        // 检查错误信息是否是我们自定义的，以避免显示 "取消" 操作的错误
         if (error.message && error.message.includes("更新失败")) {
             toastr.error(error.message, '更新出错');
         } else {
@@ -191,7 +184,6 @@ async function handleUpdate() {
         }
     }
 }
-
 /**
  * 检查更新的主函数 (采用两步验证法)
  */
