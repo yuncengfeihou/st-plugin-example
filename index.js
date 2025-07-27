@@ -10,7 +10,7 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 const extensionName = 'my-update-checker';
 
 // --- 配置区 ---
-const LOCAL_VERSION = '1.0.7'; // 你的本地版本
+const LOCAL_VERSION = '1.0.8'; // 你的本地版本
 const GITHUB_REPO = 'yuncengfeihou/st-plugin-example'; // 你的仓库
 const REMOTE_MANIFEST_PATH = 'manifest.json';
 // ----------------
