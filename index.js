@@ -9,7 +9,7 @@ import { callGenericPopup, POPUP_TYPE } from '../../../popup.js';
 const extensionName = 'st-plugin-example'; // 插件文件夹名，API 需要这个
 
 // --- 配置区 ---
-const LOCAL_VERSION = '1.0.2'; // 你的本地版本
+const LOCAL_VERSION = '1.0.3'; // 你的本地版本
 const GITHUB_REPO = 'yuncengfeihou/st-plugin-example'; // 你的仓库
 const REMOTE_CHANGELOG_PATH = 'CHANGELOG.md';
 const REMOTE_MANIFEST_PATH = 'manifest.json';
