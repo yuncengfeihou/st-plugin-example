@@ -141,36 +141,35 @@ function updateUI() {
 }
 
 /**
- * 处理更新流程：获取日志 -> 弹窗确认 -> 调用API更新
+ * 处理更新流程，使用正确的 API 调用方式
  */
 async function handleUpdate() {
-    toastr.info("正在获取更新日志...");
     try {
-        const changelog = await getRemoteFileContent(REMOTE_CHANGELOG_PATH, latestCommitHash);
-        const relevantLog = extractRelevantChangelog(changelog, LOCAL_VERSION, remoteVersion);
-
-        const logHtml = relevantLog
-            .replace(/### (.*)/g, '<strong>$1</strong>')
-            .replace(/\n/g, '<br>');
-
+        // (可选) 增加一个确认弹窗
         await callGenericPopup(
-            `<h3>发现新版本: ${remoteVersion}</h3><hr><div style="text-align:left; max-height: 300px; overflow-y: auto;">${logHtml}</div>`,
+            `确定要更新 ${extensionName} 到 ${remoteVersion} 版本吗？`,
             POPUP_TYPE.CONFIRM,
-            { okButton: '立即更新', cancelButton: '稍后' }
+            { okButton: '确定', cancelButton: '取消' }
         );
 
         toastr.info("正在请求后端更新插件，请稍候...");
+        
+        // 【关键修正】API 调用
         const response = await fetch("/api/extensions/update", {
             method: "POST",
             headers: getRequestHeaders(),
             body: JSON.stringify({
-                extensionName: extensionPath,
-                global: false,
+                // 使用正确的插件文件夹名，而不是完整路径
+                extensionName: extensionName, 
+                // 对于 third-party 插件, global 通常是 false
+                global: false, 
             })
         });
 
         if (!response.ok) {
-            throw new Error(`更新失败，服务器返回状态: ${response.status}`);
+            const errorText = await response.text();
+            // 抛出更详细的错误，包括后端返回的信息
+            throw new Error(`更新失败，服务器返回状态: ${response.status}. 详情: ${errorText}`);
         }
         
         const result = await response.json();
@@ -178,13 +177,15 @@ async function handleUpdate() {
         if (result.isUpToDate) {
             toastr.warning("插件已经是最新版本。");
         } else {
-            toastr.success(`更新成功！3秒后将自动刷新页面...`);
-            setTimeout(() => location.reload(), 3000);
+            toastr.success(`更新成功！请刷新页面以应用新版本。`, "更新完成", {timeOut: 5000});
+            // 也可以选择自动刷新
+            // setTimeout(() => location.reload(), 3000);
         }
 
     } catch (error) {
-        if (error.message.includes("更新失败")) {
-            toastr.error(error.message);
+        // 检查错误信息是否是我们自定义的，以避免显示 "取消" 操作的错误
+        if (error.message && error.message.includes("更新失败")) {
+            toastr.error(error.message, '更新出错');
         } else {
             toastr.info("更新已取消。");
         }
