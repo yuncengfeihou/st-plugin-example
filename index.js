@@ -42,11 +42,13 @@ function compareVersions(versionA, versionB) {
  * 从 GitHub API 获取远程 manifest.json 的内容
  */
 async function getRemoteManifestContent() {
-    const url = `https://cdn.jsdelivr.net/gh/${GITHUB_REPO}@main/${REMOTE_MANIFEST_PATH}`;
-    console.log(`[${extensionName}] Fetching remote manifest from: ${url}`);
+    // 直接使用 GitHub Raw Content URL，绕过所有 CDN
+    const url = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${REMOTE_MANIFEST_PATH}`;
+    console.log(`[${extensionName}] Fetching directly from GitHub Raw: ${url}`);
     
     try {
-        const response = await fetch(url, { cache: 'no-store' });
+        // 加上时间戳来确保绕过浏览器缓存
+        const response = await fetch(`${url}?t=${new Date().getTime()}`, { cache: 'no-cache' }); 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -56,7 +58,6 @@ async function getRemoteManifestContent() {
         throw error;
     }
 }
-
 /**
  * 解析 manifest 内容以获取版本号
  */
